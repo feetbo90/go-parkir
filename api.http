@@ -1,0 +1,130 @@
+@schema = https
+
+// 1732399200
+// 123fdlakjasa
+@host = api.logicparking.id
+
+@apikey = S92AWBxpvxmbY320mf7o7nCFe5OwQhaJ
+
+# @name heartbeat
+GET {{schema}}://{{host}} HTTP/1.1
+
+###
+# untuk baca plat no kendaraan dari file images
+# @name plateDetector
+POST {{schema}}://{{host}}/plate_detector HTTP/1.1
+X-Api-Key: {{apikey}}
+Content-Type: multipart/form-data
+
+file=
+###
+# @name getAreas
+GET {{schema}}://{{host}}/areas HTTP/1.1
+X-Api-Key: {{apikey}}
+
+###
+# @name getPostsByArea
+# @prompt area_id id of area
+GET {{schema}}://{{host}}/areas/{{area_id}}/posts HTTP/1.1
+X-Api-Key: {{apikey}}
+
+###
+# @name getAreaSlots
+# @prompt area_id id of area
+GET {{schema}}://{{host}}/areas/{{area_id}}/slots HTTP/1.1
+X-Api-Key: {{apikey}}
+
+###
+# untuk verifikasi dan unverifikasi pos
+# @name updatePost
+# @prompt post_id id of post
+# @prompt device_id id of device
+PATCH {{schema}}://{{host}}/posts/{{post_id}} HTTP/1.1
+Content-Type: application/json
+X-Api-Key: {{apikey}}
+
+{
+    "device_id": "{{device_id}}",
+    "unverify": false
+}
+
+###
+# Pos Masuk
+# @name createInvoice
+# @prompt post_id id of post
+# @prompt device_id id of device
+# @prompt timezone timezone
+# @prompt card_number number of cashless card
+# @prompt plate_no number of plate
+POST {{schema}}://{{host}}/posts/{{post_id}}/invoices HTTP/1.1
+X-Api-Key: {{apikey}}
+Content-Type: application/json
+
+{
+    "device_id": "{{device_id}}",
+    "timezone": "{{timezone}}",
+    "card_number": "{{card_number}}", 
+    "plate_no": "{{plate_no}}" 
+}
+
+
+
+
+
+
+
+###
+# Pos Keluar langsung tap kartu cashless
+# @name updateInvoiceWithCashless
+# @prompt post_id id of post
+# @prompt device_id id of device
+# @prompt timezone timezone
+# @prompt payment_method_id id of payment method
+# @prompt card_number number of cashless card
+# @prompt card_number_replacement number of cashless card replacement
+# @prompt plate_no number of plate
+# @prompt merchant_id id of merchant
+# @prompt terminal_id id of terminal
+PUT {{schema}}://{{host}}/posts/{{post_id}}/invoices HTTP/1.1
+X-Api-Key: {{apikey}}
+Content-Type: application/json
+
+{
+    "device_id": "{{device_id}}",
+    "timezone": "{{timezone}}",
+    "payment_method_id": "{{payment_method_id}}",
+    "card_number": "{{card_number}}",
+    "card_number_replacement": "{{card_number_replacement}}", // wajib jika pergantian kartu (kasus saldo tidak cukup)
+    "plate_no": "{{plate_no}}", // wajib jika area_is_validate_plate_no = true
+    "merchant_id": "{{merchant_id}}",
+    "terminal_id": "{{merchant_id}}"
+}
+
+###
+# Pos keluar mengunakan QRcode (Karcis)
+# note: harus kirim 2x utk kelengkapan data pembayaran diserver
+# @name updateInvoice
+# @prompt post_id id of post
+# @prompt invoice_id id of invoice
+# @prompt device_id id of device
+# @prompt timezone timezone
+# @prompt payment_method_id id of payment method
+# @prompt card_number number of cashless card
+# @prompt card_number_replacement number of cashless card replacement
+# @prompt plate_no number of plate
+# @prompt merchant_id id of merchant
+# @prompt terminal_id id of terminal
+PATCH {{schema}}://{{host}}/posts/{{post_id}}/invoices/{{invoice_id}} HTTP/1.1
+X-Api-Key: {{apikey}}
+Content-Type: application/json
+
+{
+    "device_id": "{{device_id}}",
+    "timezone": "{{timezone}}",
+    "plate_no": "{{plate_no}}", // wajib jika area_is_validate_plate_no = true
+    "payment_method_id": "{{payment_method_id}}", // wajib utk kirim yg ke 2
+    "card_number": "{{card_number}}", // // wajib utk kirim yg ke 2
+    "card_number_replacement": "{{card_number_replacement}}", // wajib utk kirim yg ke 2 jika ada
+    "merchant_id": "{{merchant_id}}", // wajib utk kirim yg ke 2
+    "terminal_id": "{{terminal_id}}" // wajib utk kirim yg ke 2
+}

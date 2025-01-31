@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"go_parkir/models"
+	"go_parkir/utils"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,13 +18,13 @@ import (
 
 var (
 	mu           sync.Mutex
-	cameraAPIURL = "http://localhost:8081/camera/activate" // URL konfigurasi kamera
-	httpClient   = &http.Client{}                          // Gunakan satu instance HTTP client
+	cameraAPIURL = "https://1017-175-158-36-199.ngrok-free.app/api/Photo" // URL konfigurasi kamera
+	httpClient   = &http.Client{}                                         // Gunakan satu instance HTTP client
 )
 
 func init() {
 	// Configure and open serial port
-	config := &serial.Config{Name: "/dev/cu.usbmodem141201", Baud: 9600}
+	config := &serial.Config{Name: "/dev/cu.usbmodem143201", Baud: 9600}
 	s, err := serial.OpenPort(config)
 	if err != nil {
 		log.Fatalf("Error opening serial port: %v", err)
@@ -61,12 +63,107 @@ func processData(data string) {
 	mu.Unlock()
 	fmt.Println("Data processed:", models.DataModel)
 
-	// Panggil API aktivasi kamera secara sinkron
-	if err := ActivateCameraAPI(); err != nil {
-		log.Printf("Failed to activate camera: %v", err)
-		return
+	if len(models.DataModel) > 0 {
+		// Ambil elemen pertama dan konversi ke integer
+		value, err := strconv.Atoi(models.DataModel[0])
+		if err != nil {
+			fmt.Println("Error converting DataModel[0] to integer:", err)
+			return
+		}
+
+		// Bandingkan nilai integer dengan 2
+		if value == 2 {
+			// Panggil API aktivasi kamera secara sinkron
+			if err := ActivateCameraAPI(); err != nil {
+				log.Printf("Failed to activate camera: %v", err)
+				return
+			}
+			log.Println("Camera activated successfully")
+		} else if value == 1 {
+			fmt.Println("models.DataModel[0] == 2 is false")
+			apiURL := "http://localhost:3000/api/device"
+
+			// Panggil fungsi untuk cek API
+			deviceResp, err := utils.CheckDeviceAPI(apiURL)
+			if err != nil {
+				log.Fatalf("Error checking device API: %v", err)
+			}
+
+			// Tampilkan hasil
+			fmt.Printf("Status: %d\n", deviceResp.Status)
+			for _, device := range deviceResp.Data {
+				fmt.Printf("Device ID: %s, Created At: %s, Updated At: %s\n", device.DeviceID, device.CreatedAt, device.UpdatedAt)
+				// Timezone Asia/Jakarta
+				location, err := time.LoadLocation("Asia/Jakarta")
+				if err != nil {
+					fmt.Println("Error:", err)
+					return
+				}
+
+				// Mendapatkan waktu saat ini dalam timezone tersebut
+				now := time.Now().In(location)
+				fmt.Println("Current time in Asia/Jakarta:", now)
+
+				schema := "https"
+				host := "api.logicparking.id"
+				apikey := "S92AWBxpvxmbY320mf7o7nCFe5OwQhaJ"
+				postID := "3"
+				deviceID := "123fdlakjasa"
+				timezone := "Asia/Jakarta"
+				plateNo := "B 1234 ABC"
+
+				response, err := utils.CreateInvoice(schema, host, apikey, postID, deviceID, timezone, "", plateNo)
+				if err != nil {
+					log.Fatalf("Error creating invoice: %v", err)
+				}
+
+				// Output hasil unmarshal
+				fmt.Printf("Invoice ID: %s\n", response.Data.ID)
+				fmt.Printf("Checked In: %s\n", response.Data.CheckedIn.Format(time.RFC3339))
+				fmt.Printf("Plate No: %s\n", response.Data.PlateNo)
+
+				// URL untuk endpoint Express
+				printURL := "http://localhost:3001/api/print-barcode"
+
+				// Payload untuk dikirim ke server Node.js
+				printPayload := map[string]interface{}{
+					"data": response.Data, // Pastikan struct `Data` sesuai dengan kebutuhan
+				}
+
+				// Encode payload ke JSON
+				payloadBytes, err := json.Marshal(printPayload)
+				if err != nil {
+					log.Fatalf("Failed to marshal print payload: %v", err)
+				}
+
+				// Buat request HTTP POST
+				req, err := http.NewRequest("POST", printURL, bytes.NewBuffer(payloadBytes))
+				if err != nil {
+					log.Fatalf("Failed to create request for printing: %v", err)
+				}
+
+				// Tambahkan header
+				req.Header.Set("Content-Type", "application/json")
+
+				client := &http.Client{Timeout: 10 * time.Second}
+				resp, err := client.Do(req)
+				if err != nil {
+					log.Fatalf("Failed to send print request: %v", err)
+				}
+				defer resp.Body.Close()
+
+				// Periksa respons dari server Node.js
+				if resp.StatusCode != http.StatusOK {
+					log.Fatalf("Print request failed with status: %d", resp.StatusCode)
+				}
+
+				log.Println("Print request sent successfully!")
+			}
+		}
+	} else {
+		fmt.Println("DataModel is empty")
 	}
-	log.Println("Camera activated successfully")
+
 }
 
 // GetLatestData returns the latest data stored in DataModel
@@ -83,7 +180,7 @@ type CameraResponse struct {
 
 func ActivateCameraAPI() error {
 	log.Println("Attempting to activate camera...") // Tambahkan log di sini
-	req, err := http.NewRequest("POST", cameraAPIURL, bytes.NewBuffer([]byte{}))
+	req, err := http.NewRequest("GET", cameraAPIURL, bytes.NewBuffer([]byte{}))
 	if err != nil {
 		log.Printf("Failed to create request: %v\n", err)
 		return fmt.Errorf("failed to create request: %w", err)
@@ -92,29 +189,28 @@ func ActivateCameraAPI() error {
 	log.Println("Sending request to camera API...") // Tambahkan log di sini
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		log.Printf("Failed to call /camera/activate: %v\n", err)
-		return fmt.Errorf("failed to call /camera/activate: %w", err)
+		log.Printf("Failed to call : %v\n", err)
+		return fmt.Errorf("failed to call : %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Camera activation failed, HTTP status code: %d\n", resp.StatusCode)
+		log.Printf("Camera activation failed, HTTP status code: %d", resp.StatusCode)
 		return fmt.Errorf("camera activation failed with HTTP status code: %d", resp.StatusCode)
 	}
 
 	var cameraResp CameraResponse
 	err = json.NewDecoder(resp.Body).Decode(&cameraResp)
 	if err != nil {
-		log.Printf("Failed to decode response: %v\n", err)
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if cameraResp.Status == 200 {
-		log.Printf("Camera activated successfully: %s\n", cameraResp.Message)
-	} else {
-		log.Printf("Camera activation failed: %s\n", cameraResp.Message)
-		return fmt.Errorf("camera activation failed: %s", cameraResp.Message)
+	// Periksa status respons
+	if cameraResp.Status != 200 {
+		return fmt.Errorf("camera activation failed: status %d, message: %s", cameraResp.Status, cameraResp.Message)
 	}
 
+	// Log pesan sukses
+	log.Printf("Camera activated successfully: %s", cameraResp.Message)
 	return nil
 }
