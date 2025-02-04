@@ -18,12 +18,18 @@ type Device struct {
 	Version   int    `json:"__v"`
 }
 
+type Pos struct {
+	ID   string `json:"_id,omitempty" bson:"_id,omitempty"`
+	Plat string `json:"plat" bson:"plat"`
+}
+
 // InvoiceRequest adalah struktur untuk payload permintaan
 type InvoiceRequest struct {
-	DeviceID   string `json:"device_id"`
-	Timezone   string `json:"timezone"`
-	CardNumber string `json:"card_number"`
-	PlateNo    string `json:"plate_no,omitempty"` // "omitempty" jika tidak diperlukan
+	DeviceID        string `json:"device_id"`
+	Timezone        string `json:"timezone"`
+	PaymentMethodId int    `json:"payment_method_id"`
+	CardNumber      string `json:"card_number"`
+	PlateNo         string `json:"plate_no,omitempty"` // "omitempty" jika tidak diperlukan
 }
 
 // DeviceAPIResponse represents the full response from the API
@@ -78,6 +84,46 @@ func CheckDeviceAPI(apiURL string) (*DeviceAPIResponse, error) {
 	return &deviceResp, nil
 }
 
+// Struktur untuk Response API yang lebih besar
+type PosAPIResponse struct {
+	Data   []Pos `json:"data"`
+	Status int   `json:"status"`
+}
+
+// Fungsi untuk cek API
+func CheckPos(apiURL string) (*Pos, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second, // Set timeout untuk request
+	}
+
+	// Buat request ke API
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make GET request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Periksa status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Decode response JSON
+	var posAPIResp PosAPIResponse
+	err = json.NewDecoder(resp.Body).Decode(&posAPIResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JSON response: %w", err)
+	}
+
+	// Cek apakah data ada
+	if len(posAPIResp.Data) == 0 {
+		return nil, fmt.Errorf("no data found in response")
+	}
+
+	// Ambil data plat nomor pertama dari array
+	return &posAPIResp.Data[0], nil
+}
+
 // CreateInvoice sends a request to create an invoice
 func CreateInvoice(schema, host, apikey, postID, deviceID, timezone, cardNumber, plateNo string) (*InvoiceResponse, error) {
 	url := fmt.Sprintf("%s://%s/posts/%s/invoices", schema, host, postID)
@@ -85,10 +131,11 @@ func CreateInvoice(schema, host, apikey, postID, deviceID, timezone, cardNumber,
 
 	// Debug: Tampilkan detail payload sebelum pengiriman
 	requestPayload := InvoiceRequest{
-		DeviceID:   deviceID,
-		Timezone:   timezone,
-		CardNumber: cardNumber,
-		PlateNo:    plateNo,
+		DeviceID:        deviceID,
+		Timezone:        timezone,
+		CardNumber:      cardNumber,
+		PaymentMethodId: 0,
+		PlateNo:         plateNo,
 	}
 	if plateNo != "" {
 		requestPayload.PlateNo = plateNo

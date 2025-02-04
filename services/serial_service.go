@@ -24,10 +24,10 @@ var (
 
 func init() {
 	// Configure and open serial port
-	config := &serial.Config{Name: "/dev/cu.usbmodem143201", Baud: 9600}
+	config := &serial.Config{Name: "/dev/cu.usbmodem141301", Baud: 9600}
 	s, err := serial.OpenPort(config)
 	if err != nil {
-		log.Fatalf("Error opening serial port: %v", err)
+		log.Println("Error opening serial port: ", err)
 	}
 
 	// Start reading serial data in a separate goroutine
@@ -86,78 +86,86 @@ func processData(data string) {
 			// Panggil fungsi untuk cek API
 			deviceResp, err := utils.CheckDeviceAPI(apiURL)
 			if err != nil {
-				log.Fatalf("Error checking device API: %v", err)
-			}
+				log.Println("Error checking device API: ", err)
+			} else {
+				// Tampilkan hasil
+				fmt.Printf("Status: %d\n", deviceResp.Status)
+				posResp, errPlat := utils.CheckPos("http://localhost:3000/api/get_plat")
+				if errPlat != nil {
+					log.Println("Error checking plat API: ", errPlat)
+				} else {
+					// pos := posResp.Data[0].plat
+					fmt.Printf("plat response: %s\n", posResp.Plat)
 
-			// Tampilkan hasil
-			fmt.Printf("Status: %d\n", deviceResp.Status)
-			for _, device := range deviceResp.Data {
-				fmt.Printf("Device ID: %s, Created At: %s, Updated At: %s\n", device.DeviceID, device.CreatedAt, device.UpdatedAt)
-				// Timezone Asia/Jakarta
-				location, err := time.LoadLocation("Asia/Jakarta")
-				if err != nil {
-					fmt.Println("Error:", err)
-					return
+					for _, device := range deviceResp.Data {
+						fmt.Printf("Device ID: %s, Created At: %s, Updated At: %s\n", device.DeviceID, device.CreatedAt, device.UpdatedAt)
+						// Timezone Asia/Jakarta
+						location, err := time.LoadLocation("Asia/Jakarta")
+						if err != nil {
+							fmt.Println("Error:", err)
+							return
+						}
+
+						// Mendapatkan waktu saat ini dalam timezone tersebut
+						now := time.Now().In(location)
+						fmt.Println("Current time in Asia/Jakarta:", now)
+
+						schema := "https"
+						host := "api.logicparking.id"
+						apikey := "S92AWBxpvxmbY320mf7o7nCFe5OwQhaJ"
+						postID := device.PosId
+						deviceID := device.DeviceID
+						timezone := "Asia/Jakarta"
+						plateNo := posResp.Plat
+
+						response, err := utils.CreateInvoice(schema, host, apikey, postID, deviceID, timezone, "", plateNo)
+						if err != nil {
+							log.Println("Error creating invoice: ", err)
+						} else {
+							// Output hasil unmarshal
+							fmt.Printf("Invoice ID: %s\n", response.Data.ID)
+							fmt.Printf("Checked In: %s\n", response.Data.CheckedIn.Format(time.RFC3339))
+							fmt.Printf("Plate No: %s\n", response.Data.PlateNo)
+
+							// URL untuk endpoint Express
+							printURL := "http://192.168.100.53:3001/api/print"
+
+							// Payload untuk dikirim ke server Node.js
+							printPayload := map[string]interface{}{
+								"data": response.Data, // Pastikan struct `Data` sesuai dengan kebutuhan
+							}
+
+							// Encode payload ke JSON
+							payloadBytes, err := json.Marshal(printPayload)
+							if err != nil {
+								log.Println("Failed to marshal print payload: ", err)
+							}
+
+							// Buat request HTTP POST
+							req, err := http.NewRequest("POST", printURL, bytes.NewBuffer(payloadBytes))
+							if err != nil {
+								log.Println("Failed to create request for printing: ", err)
+							}
+
+							// Tambahkan header
+							req.Header.Set("Content-Type", "application/json")
+
+							client := &http.Client{Timeout: 10 * time.Second}
+							resp, err := client.Do(req)
+							if err != nil {
+								log.Println("Failed to send print request: ", err)
+							} else {
+								// Periksa respons dari server Node.js
+								if resp.StatusCode != http.StatusOK {
+									log.Println("Print request failed with status: ", resp.StatusCode)
+								}
+								defer resp.Body.Close()
+								log.Println("Print request sent successfully!")
+							}
+
+						}
+					}
 				}
-
-				// Mendapatkan waktu saat ini dalam timezone tersebut
-				now := time.Now().In(location)
-				fmt.Println("Current time in Asia/Jakarta:", now)
-
-				schema := "https"
-				host := "api.logicparking.id"
-				apikey := "S92AWBxpvxmbY320mf7o7nCFe5OwQhaJ"
-				postID := "3"
-				deviceID := "123fdlakjasa"
-				timezone := "Asia/Jakarta"
-				plateNo := "B 1234 ABC"
-
-				response, err := utils.CreateInvoice(schema, host, apikey, postID, deviceID, timezone, "", plateNo)
-				if err != nil {
-					log.Fatalf("Error creating invoice: %v", err)
-				}
-
-				// Output hasil unmarshal
-				fmt.Printf("Invoice ID: %s\n", response.Data.ID)
-				fmt.Printf("Checked In: %s\n", response.Data.CheckedIn.Format(time.RFC3339))
-				fmt.Printf("Plate No: %s\n", response.Data.PlateNo)
-
-				// URL untuk endpoint Express
-				printURL := "http://localhost:3001/api/print-barcode"
-
-				// Payload untuk dikirim ke server Node.js
-				printPayload := map[string]interface{}{
-					"data": response.Data, // Pastikan struct `Data` sesuai dengan kebutuhan
-				}
-
-				// Encode payload ke JSON
-				payloadBytes, err := json.Marshal(printPayload)
-				if err != nil {
-					log.Fatalf("Failed to marshal print payload: %v", err)
-				}
-
-				// Buat request HTTP POST
-				req, err := http.NewRequest("POST", printURL, bytes.NewBuffer(payloadBytes))
-				if err != nil {
-					log.Fatalf("Failed to create request for printing: %v", err)
-				}
-
-				// Tambahkan header
-				req.Header.Set("Content-Type", "application/json")
-
-				client := &http.Client{Timeout: 10 * time.Second}
-				resp, err := client.Do(req)
-				if err != nil {
-					log.Fatalf("Failed to send print request: %v", err)
-				}
-				defer resp.Body.Close()
-
-				// Periksa respons dari server Node.js
-				if resp.StatusCode != http.StatusOK {
-					log.Fatalf("Print request failed with status: %d", resp.StatusCode)
-				}
-
-				log.Println("Print request sent successfully!")
 			}
 		}
 	} else {
